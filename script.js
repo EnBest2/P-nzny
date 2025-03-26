@@ -50,19 +50,9 @@ function add() {
   update();
 }
 
-
 function remove(index) {
-  const tx = transactions[index];
-  if (["Berakás"].includes(tx.category)) {
-    savings -= tx.amount;
-  } else if (["Kivétel", "Kp ki"].includes(tx.category)) {
-    savings += tx.amount;
-  } else if (["Kp be"].includes(tx.category)) {
-    savings -= tx.amount;
-  }
   transactions.splice(index, 1);
   update();
 }
-
 
 update();
