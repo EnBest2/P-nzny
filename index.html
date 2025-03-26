@@ -19,7 +19,8 @@
       font-family: sans-serif;
       margin: 0;
       padding: 20px;
-      background: url('background.jpg') no-repeat center center fixed;
+      background: url('background.jpg') no-repeat center center top;
+      background-attachment: scroll;
       background-size: cover;
       color: #fff;
     }
@@ -121,12 +122,14 @@ function add() {
   localStorage.setItem("transactions", JSON.stringify(transactions));
   notify(`${formatFt(amount)} - ${category}`);
   update();
+window.add = add;
 }
 
 function remove(index) {
   transactions.splice(index, 1);
   localStorage.setItem("transactions", JSON.stringify(transactions));
   update();
+window.add = add;
 }
 
 function update() {
@@ -208,6 +211,7 @@ function updateSummaryTable(summary) {
 }
 
 update();
+window.add = add;
 </script>
 </body>
 </html>
