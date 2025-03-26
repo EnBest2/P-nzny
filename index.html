@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <title>Pénzügyeim</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+    if ('Notification' in window && Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+  </script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: url('background.jpg') no-repeat center center fixed;
+      background-size: cover;
+      color: #fff;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: rgba(0,0,0,0.6);
+      padding: 20px;
+      border-radius: 10px;
+    }
+    input, select, button {
+      width: 100%;
+      margin: 5px 0;
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 5px;
+      border: none;
+    }
+    canvas {
+      margin-top: 20px;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      margin: 5px 0;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 5px;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      background: rgba(255,255,255,0.1);
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Egyenleg: <span id="balance">0</span> Ft</h1>
+  <h2>Megtakarítás: <span id="savings">0</span> Ft</h2>
+
+  <input id="title" placeholder="Megnevezés">
+  <input id="amount" type="number" placeholder="Összeg">
+  <input id="date" type="date">
+
+  <select id="category">
+    <option value="Étel">🍽️ Étel</option>
+    <option value="Szórakozás">🎮 Szórakozás</option>
+    <option value="Közlekedés">✈️ Közlekedés</option>
+    <option value="Ruházat">👕 Ruházat</option>
+    <option value="Egészség">⚕️ Egészség</option>
+    <option value="Számla">🧾 Számla</option>
+    <option value="Gift">🎁 Gift</option>
+    <option value="Fizetés">💸 Fizetés</option>
+    <option value="Berakás">➕💰 Berakás</option>
+    <option value="Kivétel">➖💰 Kivétel</option>
+    <option value="Kp be">🏦 Kp be</option>
+    <option value="Kp ki">💸🏦 Kp ki</option>
+  </select>
+  <button onclick="add()">Hozzáadás</button>
+
+  <ul id="list"></ul>
+  <canvas id="chart1"></canvas>
+  <canvas id="chart2"></canvas>
+  <table id="summaryTable"></table>
+</div>
+
+<script>
+
+let transactions = JSON.parse(localStorage.getItem("transactions") || "[]");
+let savings = parseFloat(localStorage.getItem("savings") || "0");
+
+function formatFt(value) {
+  return parseFloat(value).toLocaleString('hu-HU') + ' Ft';
+}
+
+function notify(text) {
+  if (Notification.permission === "granted") {
+    new Notification("Pénzügyeim", { body: text });
+  }
+}
+
+function add() {
+  const title = document.getElementById("title").value;
+  const amount = parseFloat(document.getElementById("amount").value);
+  const date = document.getElementById("date").value;
+  const category = document.getElementById("category").value;
+
+  if (!title || isNaN(amount) || !date) return;
+
+  transactions.push({ title, amount, date, category });
+  localStorage.setItem("transactions", JSON.stringify(transactions));
+  notify(`${formatFt(amount)} - ${category}`);
+  update();
+}
+
+function remove(index) {
+  transactions.splice(index, 1);
+  localStorage.setItem("transactions", JSON.stringify(transactions));
+  update();
+}
+
+function update() {
+  let list = document.getElementById("list");
+  let balance = 0;
+  let summary = {};
+  let savingsDisplay = document.getElementById("savings");
+  list.innerHTML = "";
+
+  transactions.forEach((t, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<b>${t.category}</b> - ${formatFt(t.amount)}<br><small>${t.date} | ${t.title}</small><br><button onclick="remove(${i})">Törlés</button>`;
+    list.appendChild(li);
+
+    let amt = parseFloat(t.amount);
+
+    if (t.category === "Fizetés" || t.category === "Gift") balance += amt;
+    else if (t.category === "Számla" || ["Étel", "Szórakozás", "Közlekedés", "Ruházat", "Egészség"].includes(t.category)) balance -= amt;
+    else if (t.category === "Berakás") { savings += amt; balance -= amt; }
+    else if (t.category === "Kivétel") { savings -= amt; balance += amt; }
+    else if (t.category === "Kp be") { savings += amt; }
+    else if (t.category === "Kp ki") { savings -= amt; }
+
+    if (!summary[t.category]) summary[t.category] = 0;
+    summary[t.category] += amt;
+  });
+
+  document.getElementById("balance").innerText = formatFt(balance);
+  savingsDisplay.innerText = formatFt(savings);
+  localStorage.setItem("savings", savings);
+  updateCharts(summary);
+  updateSummaryTable(summary);
+}
+
+function updateCharts(summary) {
+  const ctx1 = document.getElementById("chart1").getContext("2d");
+  const ctx2 = document.getElementById("chart2").getContext("2d");
+  if (window.chart1) window.chart1.destroy();
+  if (window.chart2) window.chart2.destroy();
+
+  const data1 = Object.entries(summary).filter(([k]) =>
+    ["Fizetés", "Gift", "Számla", "Étel", "Szórakozás", "Közlekedés", "Ruházat", "Egészség"].includes(k)
+  );
+  const data2 = Object.entries(summary).filter(([k]) =>
+    ["Berakás", "Kivétel", "Kp be", "Kp ki"].includes(k)
+  );
+
+  window.chart1 = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: data1.map(d => d[0]),
+      datasets: [{
+        label: 'Kiadások és bevételek',
+        data: data1.map(d => d[1]),
+        backgroundColor: 'rgba(0,123,255,0.5)'
+      }]
+    }
+  });
+
+  window.chart2 = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: data2.map(d => d[0]),
+      datasets: [{
+        label: 'Megtakarítás mozgások',
+        data: data2.map(d => d[1]),
+        backgroundColor: 'rgba(40,200,100,0.6)'
+      }]
+    }
+  });
+}
+
+function updateSummaryTable(summary) {
+  const table = document.getElementById("summaryTable");
+  table.innerHTML = "<tr><th>Kategória</th><th>Összeg</th></tr>";
+  Object.entries(summary).forEach(([cat, val]) => {
+    table.innerHTML += `<tr><td>${cat}</td><td>${formatFt(val)}</td></tr>`;
+  });
+}
+
+update();
+</script>
+</body>
+</html>
